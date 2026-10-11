@@ -1,0 +1,164 @@
+<?xml version="1.0"?>
+<robot name="mi_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:property name="rueda_radio" value="0.05"/>
+  <xacro:property name="caster_radio" value="0.02"/>
+  <xacro:property name="rueda_ancho" value="0.03"/>
+  <xacro:property name="separacion_ruedas" value="0.25"/>
+
+  <link name="base_link">
+    <visual>
+      <geometry><box size="0.3 0.2 0.1"/></geometry>
+      <material name="azul"><color rgba="0.2 0.4 0.8 1"/></material>
+    </visual>
+    <collision>
+      <geometry><box size="0.3 0.2 0.1"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="1.5"/>
+      <inertia ixx="0.00625" ixy="0.0" ixz="0.0" iyy="0.01250" iyz="0.0" izz="0.01625"/>
+    </inertial>
+  </link>
+
+  <xacro:macro name="rueda" params="prefijo y_signo">
+    <link name="rueda_${prefijo}">
+      <visual>
+        <geometry><cylinder radius="${rueda_radio}" length="${rueda_ancho}"/></geometry>
+        <material name="negro"><color rgba="0.1 0.1 0.1 1"/></material>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${rueda_radio}" length="${rueda_ancho}"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="0.03"/>
+        <inertia ixx="0.000021" ixy="0.0" ixz="0.0" iyy="0.000021" iyz="0.0" izz="0.0000375"/>
+      </inertial>
+    </link>
+
+    <joint name="joint_rueda_${prefijo}" type="continuous">
+      <parent link="base_link"/>
+      <child link="rueda_${prefijo}"/>
+      <origin xyz="${-0.15+rueda_radio} ${y_signo * separacion_ruedas/2} -0.02" rpy="-1.5708 0 0"/>
+      <axis xyz="0 0 1"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:rueda prefijo="izq" y_signo="1"/>
+  <xacro:rueda prefijo="der" y_signo="-1"/>
+
+  <link name="caster_link">
+    <visual>
+      <geometry>
+        <sphere radius="${caster_radio}"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <material name="negro"><color rgba="0.1 0.1 0.1 1"/></material>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="${caster_radio}"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="0.020"/>
+      <inertia ixx="0.0000032" ixy="0.0" ixz="0.0" iyy="0.0000032" iyz="0.0" izz="0.0000032"/>
+    </inertial>
+  </link>
+
+  <joint name="joint_caster" type="fixed">
+    <parent link="base_link"/>
+    <child link="caster_link"/>
+    <origin xyz="${0.15-caster_radio} 0 -0.05" rpy="0 0 0"/>
+  </joint>
+
+
+<gazebo>
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+        <left_joint>joint_rueda_izq</left_joint>
+        <right_joint>joint_rueda_der</right_joint>
+        <wheel_separation>${separacion_ruedas}</wheel_separation>
+        <wheel_radius>${rueda_radio}</wheel_radius>
+        <odom_publish_frequency>30</odom_publish_frequency>
+        <topic>cmd_vel</topic>
+        <odom_topic>odom</odom_topic>
+        <frame_id>odom</frame_id>
+        <child_frame_id>base_link</child_frame_id>
+    </plugin>
+</gazebo>
+
+<link name="lidar_link">
+  <visual><geometry><cylinder radius="0.03" length="0.04"/></geometry></visual>
+  <collision><geometry><cylinder radius="0.03" length="0.04"/></geometry></collision>
+  <inertial>
+    <mass value="0.170"/>
+    <inertia ixx="0.0000609167" ixy="0.0" ixz="0.0" iyy="0.0000609167" iyz="0.0" izz="0.0000765"/>
+  </inertial>
+</link>
+
+<joint name="joint_lidar" type="fixed">
+  <parent link="base_link"/>
+  <child link="lidar_link"/>
+  <origin xyz="0.1 0 0.08" rpy="0 0 0"/>
+</joint>
+
+<link name="camera_link">
+  <visual><geometry><box size="0.02 0.05 0.02"/></geometry></visual>
+  <collision><geometry><box size="0.02 0.05 0.02"/></geometry></collision>
+  <inertial>
+    <mass value="0.01"/>
+    <inertia ixx="0.00000241667" ixy="0.0" ixz="0.0" iyy="0.000000666667" iyz="0.0" izz="0.00000241667"/>
+  </inertial>
+</link>
+
+<joint name="joint_camera" type="fixed">
+  <parent link="base_link"/>
+  <child link="camera_link"/>
+  <origin xyz="0.15 0 0.03" rpy="0 0 0"/>
+</joint>
+
+<gazebo reference="lidar_link">
+  <sensor name="lidar" type="gpu_lidar">
+    <gz_frame_id>lidar_link</gz_frame_id>
+    <topic>scan</topic>
+    <update_rate>5.5</update_rate>
+    <lidar>
+      <scan>
+        <horizontal>
+          <samples>360</samples>
+          <resolution>1</resolution>
+          <min_angle>-3.14159</min_angle>
+          <max_angle>3.14159</max_angle>
+        </horizontal>
+      </scan>
+      <range>
+        <min>0.15</min>
+        <max>12.0</max>
+      </range>
+    </lidar>
+  </sensor>
+</gazebo>
+
+<gazebo reference="camera_link">
+  <sensor name="camara" type="camera">
+    <gz_frame_id>camera_link</gz_frame_id>
+    <topic>image_raw</topic>
+    <update_rate>50</update_rate>
+    <camera>
+      <horizontal_fov>1.15192</horizontal_fov>
+      <image><width>1920</width><height>1080</height></image>
+      <clip><near>0.1</near><far>20</far></clip>
+    </camera>
+  </sensor>
+</gazebo>
+
+<gazebo>
+  <plugin filename="gz-sim-joint-state-publisher-system" name="gz::sim::systems::JointStatePublisher"/>
+</gazebo>
+
+<gazebo reference="caster_link">
+  <mu1>0.0</mu1>
+  <mu2>0.0</mu2>
+</gazebo>
+
+</robot>
