@@ -22,17 +22,28 @@ source install/setup.bash
 ```
 
 ## Ejecutar
+(Recomendado) Cierra restos de una simulación anterior:
+```bash
+pkill -9 -f "gz sim"; pkill -9 -f ruby
+```
 Un solo launch levanta Gazebo (mundo `dle_pista`), el spawn, el bridge, `robot_state_publisher`, RViz2 y el nodo de cinemática:
 ```bash
 ros2 launch mi_robot_diferencial mi_robot.launch.py
 ```
 Teleoperación, en otra terminal:
 ```bash
+source ~/ros2_ws_dif/install/setup.bash
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
 > **Importante:** cada terminal nueva debe ejecutar `source install/setup.bash`. Si aparece `Package 'mi_robot_diferencial' not found`, falta ese paso.
 
 Al terminar, cierra el launch con `Ctrl+C`: el nodo imprime Q, W y el resumen del error (RMS, máximo y final).
+
+## Solución de problemas
+- **`Package 'mi_robot_diferencial' not found`:** falta ejecutar `source install/setup.bash` en esa terminal, o el paquete se compiló fuera de la raíz del workspace.
+- **El robot no aparece en (0, 0) o se ve donde terminó el recorrido anterior:** queda un Gazebo de una ejecución previa. Ciérralo con `pkill -9 -f "gz sim"; pkill -9 -f ruby` y vuelve a lanzar.
+- **El robot sale andando solo al aparecer:** algo sigue publicando `/cmd_vel` (un teleop abierto o un `ros2 topic pub` olvidado). Ciérralo con `Ctrl+C`.
+- **Avisos de RViz2 `Message Filter dropping message ... transform cache` al abrir:** son normales y desaparecen solos.
 
 ## Contenido
 - `urdf/`: modelo Xacro del robot (chasis, dos ruedas motrices, caster, LiDAR, cámara, plugins).
