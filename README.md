@@ -2,7 +2,9 @@
 
 Robot móvil diferencial simulado en Gazebo Sim, con ROS 2 Jazzy. Incluye modelo URDF/Xacro parametrizado, LiDAR y cámara, pista propia, odometría del plugin DiffDrive y un nodo que calcula la odometría a partir de la velocidad de las ruedas y la compara con el plugin.
 
-**Curso:** Robótica, Universidad EIA. **Autor:** <David Londoño Escandon>.
+**Curso:** Robótica, Universidad EIA. **Autor:** David Londoño Escandon.
+
+https://ethereal-termite-b44.notion.site/Taller-Robot-Diferencial-en-Gazebo-3f4a2993dc54803f851bf72b2eb85b4b
 
 ## Requisitos
 - Ubuntu 24.04, ROS 2 Jazzy, Gazebo Sim (Harmonic)
