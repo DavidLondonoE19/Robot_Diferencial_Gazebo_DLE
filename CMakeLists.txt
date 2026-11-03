@@ -25,15 +25,14 @@ if(BUILD_TESTING)
 endif()
 
 
-install(DIRECTORY urdf worlds config launch
+install(DIRECTORY urdf worlds config launch meshes
   DESTINATION share/${PROJECT_NAME}
 )
+
 
 install(PROGRAMS
   scripts/cinematica_ruedas.py
   DESTINATION lib/${PROJECT_NAME}
 )
-
-install(PROGRAMS scripts/cinematica_ruedas.py DESTINATION lib/${PROJECT_NAME})
 
 ament_package()
