@@ -2,6 +2,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import ExecuteProcess
+from launch.actions import AppendEnvironmentVariable
 from launch_ros.actions import Node
 from launch.substitutions import Command
 
@@ -14,6 +15,10 @@ def generate_launch_description():
     robot_description = Command(['xacro ', xacro_path])
 
     return LaunchDescription([
+        AppendEnvironmentVariable(
+            'GZ_SIM_RESOURCE_PATH',
+            os.path.dirname(pkg)),
+            
         ExecuteProcess(
             cmd=['gz', 'sim', '-r', '-v4', world_path],
             output='screen'
@@ -47,7 +52,11 @@ def generate_launch_description():
             name='cinematica_ruedas',
             output='screen',
             parameters=[{'use_sim_time': True,
-                        'wheel_radius': 0.05,
-                        'wheel_separation': 0.25}],
+                        'wheel_radius': 0.0245,
+                        'wheel_separation': 0.134}],
         ),
+
+
+        
+        
     ])
