@@ -39,8 +39,8 @@ class AEBNode(Node):
 
         # %% Parámetros (ajustables con --ros-args -p nombre:=valor)
         self.declare_parameter('mode', 'ittc')          # 'ittc' | 'corridor'
-        self.declare_parameter('ttc_threshold', 0.42)    # [s] umbral base, valor máximo en t_lat + v/(2a)
-        self.declare_parameter('a_max', 2.0)            # [m/s^2] desaceleración del robot
+        self.declare_parameter('ttc_threshold', 0.5)    # [s] umbral base, valor máximo en t_lat + v/(2a)
+        self.declare_parameter('a_max', 1.0)            # [m/s^2] desaceleración del robot
         self.declare_parameter('t_latency', 0.15)       # [s] latencia sensor->actuador
         # Del URDF, la margen se debe al radio de las ruedas más su ubicación (i.e. separación / 2) = 0.0915 m 
         self.declare_parameter('half_width', 0.1)      # [m] Debe ser mayor a chasis_ancho/2 = 0.0765, margen + desviación estándar del Lidar (0.010)
@@ -48,8 +48,8 @@ class AEBNode(Node):
         self.declare_parameter('front_offset', 0.0863)    # [m] LiDAR -> parachoques delantero
         # Con base a la colisión definida en X del URDF, (x0+cx)*m_scale menos la mitad de la medida del chasis = 0.1123 m
         self.declare_parameter('rear_offset', 0.1123)     # [m] LiDAR -> parachoques trasero
-        self.declare_parameter('v_min', 0.5)           # [m/s] por debajo no se evalúa, definido como 1cm/s
-        self.declare_parameter('rate', 10.0)            # [Hz] lazo de control o loop rate del código
+        self.declare_parameter('v_min', 0.01)           # [m/s] v_min a la que aplica AEB
+        self.declare_parameter('rate', 30.0)            # [Hz] lazo de control o loop rate del código
         self.declare_parameter('cmd_in_topic', '/cmd_vel_mux')
         # %% Estado
         self.r = None          # rangos válidos
