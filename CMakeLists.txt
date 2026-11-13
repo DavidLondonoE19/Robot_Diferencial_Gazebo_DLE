@@ -32,6 +32,7 @@ install(DIRECTORY urdf worlds config launch meshes
 
 install(PROGRAMS
   scripts/cinematica_ruedas.py
+  scripts/lidar_aeb.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -162,7 +162,7 @@
       </link>
     </model>
 
-    <model name="obstaculo_1">
+   <!-- <model name="obstaculo_1">
       <static>true</static>
       <pose>3.0000 0.0000 0.2000 0 0 0</pose>
       <link name="link">
@@ -173,6 +173,7 @@
         </visual>
       </link>
     </model>
+   -->
 
 
     <model name="zona_inicio">

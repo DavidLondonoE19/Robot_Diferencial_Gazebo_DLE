@@ -11,6 +11,7 @@ https://ethereal-termite-b44.notion.site/Taller-Robot-Diferencial-en-Gazebo-3f4a
 ```bash
 sudo apt install ros-jazzy-ros-gz ros-jazzy-xacro ros-jazzy-teleop-twist-keyboard \
                  ros-jazzy-rviz2 ros-jazzy-robot-state-publisher python3-numpy
+sudo apt install ros-jazzy-twist-mux xter
 ```
 
 ## Compilar
@@ -28,9 +29,13 @@ source install/setup.bash
 ```bash
 pkill -9 -f "gz sim"; pkill -9 -f ruby
 ```
-Un solo launch levanta Gazebo (mundo `dle_pista`), el spawn, el bridge, `robot_state_publisher`, RViz2 y el nodo de cinemática:
+Diferentes launch en los que se levanta Gazebo con opción de modo teleoperación o autónomo, así como también la pista propia del equipo y la de la competencia. Por lo tanto, estas son las posibles combinaciones:
 ```bash
-ros2 launch mi_robot_diferencial mi_robot.launch.py
+ros2 launch mi_robot_diferencial mi_robot.launch.py --show-args # Mostrará los diferentes argumentos para launch
+ros2 launch mi_robot_diferencial mi_robot.launch.py modo:=teleop pista:=propia
+ros2 launch mi_robot_diferencial mi_robot.launch.py modo:=teleop pista:=competencia
+ros2 launch mi_robot_diferencial mi_robot.launch.py modo:=auto pista:=propia
+ros2 launch mi_robot_diferencial mi_robot.launch.py modo:=auto pista:=competencia
 ```
 Teleoperación, en otra terminal:
 ```bash
