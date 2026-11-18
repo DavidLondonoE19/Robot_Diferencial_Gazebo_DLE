@@ -14,8 +14,10 @@
 
 
 import math
+import csv
 import numpy as np
 import rclpy
+from pathlib import Path
 from geometry_msgs.msg import Vector3Stamped
 from nav_msgs.msg import Odometry
 from rclpy.executors import ExternalShutdownException
@@ -74,7 +76,7 @@ class CinematicaRuedas(Node):
         self.declare_parameter("joints_left", ["joint_rueda_del_izq", "joint_rueda_tra_izq"])
         self.declare_parameter("joints_right", ["joint_rueda_del_der", "joint_rueda_tra_der"])
         self.declare_parameter("wheel_sign", 1)             # +1: giro positivo = avanzar
-        self.declare_parameter("use_joint_velocity", False) # False: w = d(posición)/dt
+        self.declare_parameter("use_joint_velocity", True) # False: w = d(posición)/dt
         self.declare_parameter("init_from_odom", True)      # arranca desde la pose de /odom
         self.declare_parameter("max_dt", 0.5)  
         self.declare_parameter("ref_topic", "/ground_truth")             # descarta saltos de tiempo [s]
@@ -112,6 +114,28 @@ class CinematicaRuedas(Node):
         self.e_pos = self.e_th = 0.0
         self.dist = 0.0
         self.odom_prev = None
+
+        # Configuracion de la linea de meta
+        self.meta_x = 0.0
+        self.distancia_min_vuelta = 20.0
+
+        # Registro de trayectoria
+        self.pose_anterior = None
+        self.ultima_muestra = None
+        self.trayectoria = []
+        self.resultados = []
+
+        # Control de vueltas
+        self.recorrido_meta = 0.0
+        self.t_inicio = None
+        self.t_cruce_anterior = None
+        self.vueltas = 0
+        self.iniciado = False
+        self.finalizado = False
+
+        # Carpeta de resultados
+        self.salida = Path.home() / "odometria_3_vueltas"
+
 
 
         self.create_subscription(JointState, "/joint_states", self.cb_joint, 50) 
@@ -181,7 +205,7 @@ class CinematicaRuedas(Node):
         if not self.listo:
             self.x, self.y, self.th = xo, yo, tho
             self.listo = True
-            self.get_logger().info(f"Pose inicial tomada de /odom: ({xo:.3f}, {yo:.3f}, {tho:.3f})")
+            self.get_logger().info(f"Pose inicial tomada de {self.ref_topic}: ({xo:.3f}, {yo:.3f}, {tho:.3f})")
             self.get_logger().info(f"Q (filas [D, I]) =\n{np.round(self.Q, 4)}")
             self.get_logger().info(f"W = Q^T (Q Q^T)^-1 =\n{np.round(self.W, 4)}")
             return
@@ -224,10 +248,167 @@ class CinematicaRuedas(Node):
         self.s_th2 += eth ** 2
         self.max_pos = max(self.max_pos, self.e_pos)
         self.max_th = max(self.max_th, abs(eth))
+        self.procesar_vueltas(msg)
 
         #n cuenta las muestras. s_pos2 acumula la suma de errores al cuadrado, que luego sirve para el RMS = √(Σe²/n). 
         # max_pos guarda el peor error. Se hace lo mismo con el ángulo.
-        
+
+    def procesar_vueltas(self, msg):
+        if self.finalizado:
+            return
+
+        t = self._tiempo(msg.header.stamp)
+        xr = msg.pose.pose.position.x
+        yr = msg.pose.pose.position.y
+        tr = yaw_de_cuaternion(msg.pose.pose.orientation)
+
+        actual = (t, xr, yr, tr, self.x, self.y, self.th)
+        anterior = self.pose_anterior
+        self.pose_anterior = actual
+
+        if anterior is None or t <= anterior[0]:
+            return
+
+        self.recorrido_meta += math.hypot(xr - anterior[1], yr - anterior[2]) 
+
+        # Registrar puntos aproximadamente cada 0.1 segundos
+        if self.iniciado and (
+            self.ultima_muestra is None
+            or t - self.ultima_muestra >= 0.1
+        ):
+            self.trayectoria.append(actual)
+            self.ultima_muestra = t
+
+        # Detectar cruce de x=0 en sentido positivo
+        if not (anterior[1] < self.meta_x <= xr):
+            return
+
+        # Interpolar la posicion exacta de cruce
+        f = (self.meta_x - anterior[1]) / (xr - anterior[1])
+        y_cruce = anterior[2] + f * (yr - anterior[2])
+
+        if not (-0.4 <= y_cruce <= 0.4):
+            return
+
+        t_cruce = anterior[0] + f * (t - anterior[0])
+        xe = anterior[4] + f * (self.x - anterior[4])
+        ye = anterior[5] + f * (self.y - anterior[5])
+
+        th_real = wrap(
+            anterior[3] + f * wrap(tr - anterior[3])
+        )
+        th_est = wrap(
+            anterior[6] + f * wrap(self.th - anterior[6])
+        )
+
+        punto_meta = (t_cruce, self.meta_x, y_cruce,th_real, xe, ye, th_est)
+
+        # Primer cruce: inicio de la prueba
+        if not self.iniciado:
+            self.iniciado = True
+            self.t_inicio = t_cruce
+            self.t_cruce_anterior = t_cruce
+            self.recorrido_meta = 0.0
+            self.ultima_muestra = t_cruce
+            self.trayectoria = [punto_meta]
+
+            self.get_logger().info(
+                "Cruce inicial detectado: comienza la vuelta 1"
+            )
+            return
+
+        # Evitar contar cruces repetidos cerca de meta
+        if self.recorrido_meta < self.distancia_min_vuelta:
+            return
+
+        self.vueltas += 1
+
+        error_pos = math.hypot(
+            xe - self.meta_x, ye - y_cruce
+        )
+        error_ang = math.degrees(wrap(th_est - th_real))
+        tiempo_vuelta = t_cruce - self.t_cruce_anterior
+
+        self.resultados.append((self.vueltas,tiempo_vuelta,t_cruce - self.t_inicio,
+                                error_pos,error_ang,y_cruce,xe,ye))
+
+        self.get_logger().info(
+            f"VUELTA {self.vueltas} | "
+            f"tiempo={tiempo_vuelta:.2f} s | "
+            f"error posicion={error_pos:.4f} m | "
+            f"error angular={error_ang:.2f} grados"
+        )
+
+        self.t_cruce_anterior = t_cruce
+        self.recorrido_meta = 0.0
+
+        if self.vueltas == 3:
+            self.trayectoria.append(punto_meta)
+            self.finalizado = True
+            self.guardar_resultados()
+
+    def guardar_resultados(self):
+        self.salida.mkdir(parents=True, exist_ok=True)
+
+        # Guardar trayectoria
+        with open(self.salida / "trayectoria.csv", "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "tiempo", "x_real", "y_real", "theta_real",
+                "x_estimado", "y_estimado", "theta_estimado"
+            ])
+
+            for p in self.trayectoria:
+                writer.writerow([p[0] - self.t_inicio, *p[1:]])
+
+        # Guardar errores por vuelta
+        with open(self.salida / "errores_vueltas.csv", "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "vuelta", "tiempo_vuelta", "tiempo_total",
+                "error_posicion", "error_angular",
+                "y_real_meta", "x_estimado_meta", "y_estimado_meta"
+            ])
+            writer.writerows(self.resultados)
+
+        # Graficar trayectoria
+        try:
+            import matplotlib.pyplot as plt
+
+            plt.figure(figsize=(9, 6))
+
+            plt.plot(
+                [p[1] for p in self.trayectoria],
+                [p[2] for p in self.trayectoria],
+                label="Trayectoria real"
+            )
+
+            plt.plot(
+                [p[4] for p in self.trayectoria],
+                [p[5] for p in self.trayectoria],
+                "--", label="Odometria estimada"
+            )
+
+            plt.xlabel("X [m]")
+            plt.ylabel("Y [m]")
+            plt.title("Odometria durante tres vueltas")
+            plt.legend()
+            plt.grid(True)
+            plt.axis("equal")
+
+            plt.savefig(
+                self.salida / "trayectoria_3_vueltas.png",
+                dpi=180
+            )
+            plt.close()
+
+        except ImportError:
+            self.get_logger().warn("Matplotlib no instalado")
+
+        self.get_logger().info(
+            f"Resultados guardados en {self.salida}"
+        )
+
     def resumen(self):
         if self.n == 0:
             print("[cinematica_ruedas] Sin muestras para el resumen.")
