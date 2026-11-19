@@ -80,6 +80,16 @@ class CinematicaRuedas(Node):
         self.declare_parameter("init_from_odom", True)      # arranca desde la pose de /odom
         self.declare_parameter("max_dt", 0.5)  
         self.declare_parameter("ref_topic", "/ground_truth")             # descarta saltos de tiempo [s]
+        # Línea de salida/meta: segmento perpendicular al eje 'meta_eje' ("eje_x" | "eje_y") en
+        # meta_valor [m], entre meta_min y meta_max [m] sobre el otro eje. meta_sentido: +1 si se
+        # cruza avanzando en + del eje, -1 si se cruza avanzando en -.
+        # (No usar "x"/"y" como valor: en el YAML de parámetros "y" se interpreta como booleano.)
+        self.declare_parameter("meta_eje", "eje_x")
+        self.declare_parameter("meta_valor", 0.0)
+        self.declare_parameter("meta_min", -0.4)
+        self.declare_parameter("meta_max", 0.4)
+        self.declare_parameter("meta_sentido", 1)
+        self.declare_parameter("distancia_min_vuelta", 20.0)   # [m] evita contar cruces repetidos
 
         p = lambda n: self.get_parameter(n).value
         self.r = float(p("wheel_radius"))
@@ -116,8 +126,11 @@ class CinematicaRuedas(Node):
         self.odom_prev = None
 
         # Configuracion de la linea de meta
-        self.meta_x = 0.0
-        self.distancia_min_vuelta = 20.0
+        self.meta_eje = str(p("meta_eje"))
+        self.meta_valor = float(p("meta_valor"))
+        self.meta_rango = (float(p("meta_min")), float(p("meta_max")))
+        self.meta_sentido = 1.0 if int(p("meta_sentido")) >= 0 else -1.0
+        self.distancia_min_vuelta = float(p("distancia_min_vuelta"))
 
         # Registro de trayectoria
         self.pose_anterior = None
@@ -279,16 +292,24 @@ class CinematicaRuedas(Node):
             self.trayectoria.append(actual)
             self.ultima_muestra = t
 
-        # Detectar cruce de x=0 en sentido positivo
-        if not (anterior[1] < self.meta_x <= xr):
+        # Detectar cruce de la linea de meta en el sentido de la carrera
+        i_eje, i_otro = (1, 2) if self.meta_eje == "eje_x" else (2, 1)
+        a_ant = self.meta_sentido * anterior[i_eje]
+        a_act = self.meta_sentido * actual[i_eje]
+        a_meta = self.meta_sentido * self.meta_valor
+        if not (a_ant < a_meta <= a_act):
             return
 
         # Interpolar la posicion exacta de cruce
-        f = (self.meta_x - anterior[1]) / (xr - anterior[1])
-        y_cruce = anterior[2] + f * (yr - anterior[2])
+        f = (a_meta - a_ant) / (a_act - a_ant)
+        otro_cruce = anterior[i_otro] + f * (actual[i_otro] - anterior[i_otro])
 
-        if not (-0.4 <= y_cruce <= 0.4):
+        if not (self.meta_rango[0] <= otro_cruce <= self.meta_rango[1]):
             return
+        if self.meta_eje == "eje_x":
+            x_cruce, y_cruce = self.meta_valor, otro_cruce
+        else:
+            x_cruce, y_cruce = otro_cruce, self.meta_valor
 
         t_cruce = anterior[0] + f * (t - anterior[0])
         xe = anterior[4] + f * (self.x - anterior[4])
@@ -301,7 +322,7 @@ class CinematicaRuedas(Node):
             anterior[6] + f * wrap(self.th - anterior[6])
         )
 
-        punto_meta = (t_cruce, self.meta_x, y_cruce,th_real, xe, ye, th_est)
+        punto_meta = (t_cruce, x_cruce, y_cruce, th_real, xe, ye, th_est)
 
         # Primer cruce: inicio de la prueba
         if not self.iniciado:
@@ -324,13 +345,13 @@ class CinematicaRuedas(Node):
         self.vueltas += 1
 
         error_pos = math.hypot(
-            xe - self.meta_x, ye - y_cruce
+            xe - x_cruce, ye - y_cruce
         )
         error_ang = math.degrees(wrap(th_est - th_real))
         tiempo_vuelta = t_cruce - self.t_cruce_anterior
 
         self.resultados.append((self.vueltas,tiempo_vuelta,t_cruce - self.t_inicio,
-                                error_pos,error_ang,y_cruce,xe,ye))
+                                error_pos,error_ang,x_cruce,y_cruce,xe,ye))
 
         self.get_logger().info(
             f"VUELTA {self.vueltas} | "
@@ -367,7 +388,7 @@ class CinematicaRuedas(Node):
             writer.writerow([
                 "vuelta", "tiempo_vuelta", "tiempo_total",
                 "error_posicion", "error_angular",
-                "y_real_meta", "x_estimado_meta", "y_estimado_meta"
+                "x_real_meta", "y_real_meta", "x_estimado_meta", "y_estimado_meta"
             ])
             writer.writerows(self.resultados)
 
