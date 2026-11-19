@@ -2,6 +2,10 @@ twist_mux:
   ros__parameters:
     use_stamped: false
     topics:
+      mando:
+        topic: cmd_vel_joy
+        timeout: 0.5
+        priority: 110
       teleop:
         topic: cmd_vel_teleop
         timeout: 0.5

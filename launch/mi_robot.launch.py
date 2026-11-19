@@ -3,11 +3,11 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
-from launch.conditions import LaunchConfigurationEquals
+from launch.conditions import LaunchConfigurationEquals, IfCondition
 from launch.actions import ExecuteProcess
 from launch.actions import AppendEnvironmentVariable
 from launch_ros.actions import Node
-from launch.substitutions import Command
+from launch.substitutions import Command, PythonExpression
 
 def generate_launch_description():
     pkg = get_package_share_directory('mi_robot_diferencial')
@@ -17,10 +17,18 @@ def generate_launch_description():
     bridge_config = os.path.join(pkg, 'config', 'bridge.yaml')
 
     robot_description = Command(['xacro ', xacro_path])
+    joy_config = os.path.join(pkg, 'config', 'joy_teleop.yaml')
+
+    def teleop_con(dispositivo):
+        return IfCondition(PythonExpression([
+            "'", LaunchConfiguration('modo'), "' == 'teleop' and '",
+            LaunchConfiguration('control'), "' == '", dispositivo, "'"]))
 
     return LaunchDescription([
         DeclareLaunchArgument('modo', default_value='teleop', choices=['teleop', 'auto']),
         DeclareLaunchArgument('pista', default_value='propia', choices=['propia', 'competencia']),
+        DeclareLaunchArgument('control', default_value='teclado', choices=['teclado', 'mando'],
+                              description='Dispositivo de teleoperación (solo con modo:=teleop)'),
         AppendEnvironmentVariable(
             'GZ_SIM_RESOURCE_PATH',
             os.path.dirname(pkg)),
@@ -66,14 +74,24 @@ def generate_launch_description():
             output='screen',
             parameters=[{'use_sim_time': True,
                         'wheel_radius': 0.0245,
-                        'wheel_separation': 0.134}],
+                        # Vía efectiva del skid-steer: B_ef = chi*B = 1.320*0.134 m,
+                        # calibrada con calibrar_odometria.py (giro en el sitio vs /ground_truth)
+                        'wheel_separation': 0.1769}],
         ),
         Node(
             package='mi_robot_diferencial',
             executable='lidar_aeb.py',
             name='lidar_aeb',
             output='screen',
+            parameters=[{'use_sim_time': True, 'mode': 'corridor'}],
+        ),
+        Node(
+            package='mi_robot_diferencial',
+            executable='wall_follow.py',
+            name='wall_follow',
+            output='screen',
             parameters=[{'use_sim_time': True}],
+            condition=LaunchConfigurationEquals('modo', 'auto')
         ),
         Node(
             package='twist_mux', executable='twist_mux', output='screen',
@@ -84,7 +102,19 @@ def generate_launch_description():
             package='teleop_twist_keyboard', executable='teleop_twist_keyboard',
             prefix='xterm -e', output='screen',
             remappings=[('cmd_vel', 'cmd_vel_teleop')],
-            condition=LaunchConfigurationEquals('modo', 'teleop')
+            condition=teleop_con('teclado')
+        ),
+        Node(
+            package='joy', executable='joy_node', name='joy_node', output='screen',
+            parameters=[joy_config],
+            condition=teleop_con('mando')
+        ),
+        Node(
+            package='teleop_twist_joy', executable='teleop_node', name='teleop_twist_joy_node',
+            output='screen',
+            parameters=[joy_config],
+            remappings=[('cmd_vel', 'cmd_vel_joy')],
+            condition=teleop_con('mando')
         ),
 
         
